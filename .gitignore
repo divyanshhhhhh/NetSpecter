@@ -1,0 +1,88 @@
+# NetSpecter - Ignore patterns
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Logs
+*.log
+logs/
+
+# PCAP files (can be large)
+*.pcap
+*.pcapng
+*.cap
+sample_pcaps/
+
+# Temp files
+*.tmp
+*.temp
+.tmp/
+temp/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+frontend/.parcel-cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env.local
+.env.*.local
+secrets/
