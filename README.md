@@ -28,8 +28,8 @@ NetSpecter is a professional-grade network packet analysis tool designed for cyb
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd SPR600
+git clone https://github.com/divyanshhhhhh/NetSpecter.git
+cd NetSpecter
 ```
 
 2. Create a virtual environment and install dependencies:
