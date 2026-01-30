@@ -86,3 +86,13 @@ Thumbs.db
 .env.local
 .env.*.local
 secrets/
+
+# Analysis outputs
+*_report.md
+*.json
+!pyproject.json
+!package.json
+!tsconfig.json
+
+# Gemini agent artifacts
+.gemini/

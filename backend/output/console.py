@@ -402,55 +402,203 @@ Automates deep packet inspection through multi-phase analysis:
             self.console.print()
 
     # =========================================================================
-    # Enrichment Results
+    # Cascading Enrichment Results
     # =========================================================================
 
+    def print_cascading_enrichment_start(self, total_ips: int, total_domains: int) -> None:
+        """Print cascading enrichment phase start."""
+        self.print_phase_header(
+            "enrichment",
+            "PHASE 4: Cascading Threat Intelligence Enrichment",
+            "Step 1: AlienVault OTX → Step 2: AbuseIPDB → Step 3: VirusTotal"
+        )
+        self.print_info(f"Found {total_ips} unique non-private IPs and {total_domains} domains to analyze")
+        self.console.print()
+
+    def print_enrichment_step_start(self, step: str, description: str, limit: str) -> None:
+        """Print the start of an enrichment step."""
+        self.console.print(f"─── [bold cyan]Step {step}[/bold cyan] [dim]({limit})[/dim] ───")
+        self.console.print(f"  [dim]{description}[/dim]")
+
+    def print_enrichment_progress(
+        self,
+        step: str,
+        current: int,
+        total: int,
+        indicator: str,
+        is_flagged: bool,
+        threat_level: str,
+        details: str = "",
+    ) -> None:
+        """Print enrichment progress for a single indicator."""
+        # Truncate indicator if too long
+        max_len = 30
+        display_indicator = indicator if len(indicator) <= max_len else indicator[:max_len-3] + "..."
+        
+        # Determine status symbol and color
+        if threat_level == "malicious":
+            status = "[red bold]🔴 MALICIOUS[/red bold]"
+        elif threat_level == "suspicious" or is_flagged:
+            status = "[yellow]⚠ flagged[/yellow]"
+        else:
+            status = "[green]✓ clean[/green]"
+        
+        # Build the line
+        line = f"  [{current:3}/{total}] {display_indicator:32} {status}"
+        if details and threat_level in ("malicious", "suspicious"):
+            line += f" [dim]({details})[/dim]"
+        
+        self.console.print(line)
+
+    def print_enrichment_step_complete(self, step: str, checked: int, flagged: int) -> None:
+        """Print enrichment step completion summary."""
+        self.console.print()
+        self.console.print(f"  [green]✓[/green] {step} complete: {checked} checked, {flagged} flagged")
+        self.console.print()
+
+    def print_flagged_indicators(self, flagged_indicators: list) -> None:
+        """Print the table of flagged indicators with red highlighting."""
+        if not flagged_indicators:
+            self.console.print()
+            self.console.print("[green]✅ No malicious indicators found in threat intelligence databases.[/green]")
+            return
+
+        self.console.print()
+        self.console.print(Panel(
+            "[bold red]🚨 FLAGGED INDICATORS (Malicious/Suspicious)[/bold red]",
+            border_style="red",
+            padding=(0, 1),
+        ))
+        self.console.print()
+
+        for item in flagged_indicators[:25]:
+            indicator = item.get("indicator", "")
+            threat_level = item.get("threat_level", "unknown")
+            summary = item.get("summary", "")
+            malware_families = item.get("malware_families", [])
+            
+            # Color based on threat level
+            if threat_level == "malicious":
+                emoji = "🔴"
+                color = "red bold"
+            else:
+                emoji = "⚠"
+                color = "yellow"
+            
+            # Build the line
+            line = f"  {emoji} [{color}]{indicator:35}[/{color}] {summary}"
+            if malware_families:
+                line += f" [bright_magenta]({', '.join(malware_families[:3])})[/bright_magenta]"
+            
+            self.console.print(line)
+
+    def print_enrichment_stats(self, stats: dict) -> None:
+        """Print enrichment statistics table."""
+        self.console.print()
+        self.console.print("[bold bright_white]📊 Enrichment Statistics[/bold bright_white]")
+        
+        table = Table(box=ROUNDED, border_style="dim")
+        table.add_column("Source", style="cyan")
+        table.add_column("Checked", style="bright_white", justify="right")
+        table.add_column("Flagged", style="yellow", justify="right")
+        table.add_column("Errors", style="red", justify="right")
+        
+        if "otx" in stats:
+            otx = stats["otx"]
+            table.add_row(
+                "AlienVault OTX",
+                str(otx.get("checked", 0)),
+                str(otx.get("flagged", 0)),
+                str(otx.get("errors", 0)),
+            )
+        
+        if "abuseipdb" in stats:
+            abuse = stats["abuseipdb"]
+            table.add_row(
+                "AbuseIPDB",
+                str(abuse.get("checked", 0)),
+                str(abuse.get("flagged", 0)),
+                str(abuse.get("errors", 0)),
+            )
+        
+        if "virustotal" in stats:
+            vt = stats["virustotal"]
+            table.add_row(
+                "VirusTotal",
+                str(vt.get("checked", 0)),
+                str(vt.get("malicious", 0)),
+                str(vt.get("errors", 0)),
+            )
+        
+        self.console.print(table)
+
+    # Legacy methods for backward compatibility
     def print_enrichment_start(self) -> None:
-        """Print enrichment phase start."""
+        """Print enrichment phase start (legacy)."""
         self.print_phase_header(
             "enrichment",
             "PHASE 4: Threat Intelligence Enrichment",
             "Querying external reputation databases for flagged indicators"
         )
-        self.print_info("Filtering indicators: Skipping private IPs, known CDNs")
-        self.print_info("Prioritizing: Detection-flagged IPs, suspicious domains")
-        self.print_info("Sources: VirusTotal, AbuseIPDB, AlienVault OTX")
 
     def print_enrichment_skipped(self, reason: str) -> None:
         """Print enrichment skipped message."""
         self.print_warning(f"Enrichment skipped: {reason}")
 
     def print_enrichment_results(self, enrichment: dict) -> None:
-        """Print enrichment results."""
+        """Print enrichment results (legacy format)."""
         if not enrichment:
             return
 
         stats = enrichment.get("stats", {})
-        results = enrichment.get("results", [])
         
-        self.console.print()
-        self.console.print("[bold bright_white]🌐 Enrichment Summary[/bold bright_white]")
-        
-        summary_table = Table(box=ROUNDED, border_style="dim")
-        summary_table.add_column("Metric", style="cyan")
-        summary_table.add_column("Count", style="bright_white", justify="right")
-        
-        summary_table.add_row("Total Indicators Checked", str(stats.get("total_indicators", 0)))
-        summary_table.add_row("Malicious Found", f"[red]{stats.get('malicious_found', 0)}[/red]")
-        summary_table.add_row("Suspicious Found", f"[yellow]{stats.get('suspicious_found', 0)}[/yellow]")
-        
-        self.console.print(summary_table)
-
-        # Show malicious indicators
-        malicious = [r for r in results if r.get("verdict") == "malicious"]
-        if malicious:
-            self.console.print()
-            self.console.print("[bold red]🚨 Malicious Indicators[/bold red]")
+        # Handle new cascading stats format
+        if "otx" in stats or "abuseipdb" in stats or "virustotal" in stats:
+            self.print_enrichment_stats(stats)
             
-            for item in malicious[:10]:
-                indicator = item.get("indicator", "")
-                sources = item.get("sources", [])
-                self.console.print(f"  [red]•[/red] {indicator} [dim](from: {', '.join(sources)})[/dim]")
+            flagged = enrichment.get("flagged_indicators", [])
+            self.print_flagged_indicators(flagged)
+        else:
+            # Old format
+            results = enrichment.get("results", [])
+            
+            self.console.print()
+            self.console.print("[bold bright_white]🌐 Enrichment Summary[/bold bright_white]")
+            
+            summary_table = Table(box=ROUNDED, border_style="dim")
+            summary_table.add_column("Metric", style="cyan")
+            summary_table.add_column("Count", style="bright_white", justify="right")
+            
+            summary_table.add_row("Total Indicators Checked", str(stats.get("total_indicators", 0)))
+            summary_table.add_row("Malicious Found", f"[red]{stats.get('malicious_found', 0)}[/red]")
+            summary_table.add_row("Suspicious Found", f"[yellow]{stats.get('suspicious_found', 0)}[/yellow]")
+            
+            self.console.print(summary_table)
+
+            # Show malicious indicators
+            malicious = [r for r in results if r.get("verdict") == "malicious"]
+            if malicious:
+                self.console.print()
+                self.console.print("[bold red]🚨 Malicious Indicators[/bold red]")
+                
+                for item in malicious[:10]:
+                    indicator = item.get("indicator", "")
+                    sources = item.get("sources", [])
+                    self.console.print(f"  [red]•[/red] {indicator} [dim](from: {', '.join(sources)})[/dim]")
+
+    # =========================================================================
+    # Report Save Prompt
+    # =========================================================================
+
+    def prompt_save_report(self) -> bool:
+        """Prompt user to save report."""
+        self.console.print()
+        response = self.console.input("[bold bright_white]Save analysis report? [Y/n]:[/bold bright_white] ")
+        return response.lower() != "n"
+
+    def print_report_saved(self, path: str) -> None:
+        """Print report saved confirmation."""
+        self.console.print(f"  [green]✓[/green] Report saved to: [bright_cyan]{path}[/bright_cyan]")
 
     # =========================================================================
     # AI Analysis Results
@@ -463,9 +611,9 @@ Automates deep packet inspection through multi-phase analysis:
             "PHASE 5: AI-Powered Analysis",
             "Using LLMs to interpret findings and identify complex attack patterns"
         )
-        self.print_info("Model: Llama 3.3 70B for statistical interpretation")
-        self.print_info("Model: DeepSeek R1 for behavioral analysis")
-        self.print_info("Model: DeepSeek R1T2 Chimera for final synthesis")
+        self.print_info("Stats Model: deepseek/deepseek-r1-0528:free (reasoning model)")
+        self.print_info("Detection Model: tngtech/deepseek-r1t-chimera:free (behavioral analysis)")
+        self.print_info("Synthesis Model: deepseek/deepseek-r1-0528:free (final correlation)")
 
     def print_ai_skipped(self, reason: str) -> None:
         """Print AI analysis skipped message."""

@@ -1,0 +1,135 @@
+# NetSpecter Legitimate Domains List
+# Domains in this list are skipped during threat intelligence enrichment
+# Lines starting with # are comments
+
+# Web Services & Cloud Providers
+google.com
+googleapis.com
+gstatic.com
+googleusercontent.com
+youtube.com
+ytimg.com
+microsoft.com
+windows.com
+live.com
+office.com
+office365.com
+outlook.com
+microsoftonline.com
+azure.com
+azureedge.net
+amazon.com
+amazonaws.com
+cloudfront.net
+apple.com
+icloud.com
+mzstatic.com
+apple-dns.net
+
+# CDN & Infrastructure
+akamai.net
+akamaiedge.net
+akamaitechnologies.com
+cloudflare.com
+cloudflare.net
+fastly.net
+edgekey.net
+edgesuite.net
+
+# Social Media
+facebook.com
+fbcdn.net
+instagram.com
+twitter.com
+twimg.com
+linkedin.com
+licdn.com
+whatsapp.com
+whatsapp.net
+tiktok.com
+
+# Operating System & Updates
+windowsupdate.com
+update.microsoft.com
+download.microsoft.com
+ubuntu.com
+debian.org
+canonical.com
+redhat.com
+fedoraproject.org
+
+# Security & Certificate Authorities
+digicert.com
+letsencrypt.org
+globalsign.com
+symantec.com
+verisign.com
+godaddy.com
+ocsp.digicert.com
+ocsp.godaddy.com
+
+# Antivirus & Security Software
+avast.com
+avg.com
+mcafee.com
+norton.com
+symantecliveupdate.com
+kaspersky.com
+eset.com
+malwarebytes.com
+
+# Browser Related
+mozilla.org
+mozilla.net
+firefox.com
+chrome.com
+chromium.org
+
+# Developer Tools & Repositories
+github.com
+githubusercontent.com
+gitlab.com
+bitbucket.org
+npmjs.org
+npmjs.com
+pypi.org
+docker.com
+docker.io
+
+# Analytics & Advertising (Legitimate)
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+google-analytics.com
+googletagmanager.com
+
+# Communication & Collaboration
+zoom.us
+slack.com
+teams.microsoft.com
+discord.com
+discordapp.com
+skype.com
+webex.com
+
+# DNS & NTP Services
+time.windows.com
+time.google.com
+pool.ntp.org
+dns.google
+
+# Common Legitimate Services
+dropbox.com
+box.com
+spotify.com
+netflix.com
+
+# Additional High-Trust Domains
+adobe.com
+adobelogin.com
+salesforce.com
+wordpress.com
+wordpress.org
+wikipedia.org
+wikimedia.org
+stackoverflow.com

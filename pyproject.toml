@@ -11,11 +11,6 @@ authors = [
 keywords = ["network", "pcap", "security", "packet-analysis", "threat-detection"]
 
 dependencies = [
-    # Web Framework
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
-    "python-multipart>=0.0.6",
-    
     # PCAP Parsing
     "dpkt>=1.9.8",
     "scapy>=2.5.0",
@@ -25,7 +20,7 @@ dependencies = [
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
     
-    # HTTP Client (for threat intel APIs)
+    # HTTP Client (for AI and threat intel APIs)
     "httpx>=0.26.0",
     
     # Async support

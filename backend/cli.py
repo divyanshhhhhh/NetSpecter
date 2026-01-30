@@ -185,44 +185,201 @@ async def run_analysis(file_path: Path, console: NetSpecterConsole) -> dict:
     console.print_findings([f.to_dict() for f in all_findings])
     
     # =========================================================================
-    # Phase 4: Threat Intelligence Enrichment
+    # Phase 4: Smart Indicator Filtering + Cascading Enrichment
     # =========================================================================
-    console.print_enrichment_start()
+    from backend.analysis.smart_filter import get_smart_filter, FilteredIndicators
+    from backend.enrichment.cascading import (
+        get_cascading_enrichment,
+        CascadingResult,
+        ProgressUpdate,
+    )
     
-    from backend.enrichment.manager import get_enrichment_manager
+    console.print_phase_header(
+        "enrichment",
+        "PHASE 4: Smart Indicator Filtering & Enrichment",
+        "Filter by conversation volume, legit domains, typosquatting detection"
+    )
     
-    enrichment_manager = get_enrichment_manager()
-    enrichment_summary = None
+    cascading = get_cascading_enrichment()
+    enrichment_result: CascadingResult | None = None
+    smart_filter = get_smart_filter()
     
-    if enrichment_manager.is_configured:
-        console.print_info("Threat intelligence APIs configured, enriching indicators...")
+    # Interactive filter configuration loop
+    filter_confirmed = False
+    while not filter_confirmed:
+        console.console.print("[bold cyan]Configure traffic filtering:[/bold cyan]")
+        console.console.print("  [dim]Filter conversations by traffic volume to select indicators[/dim]")
+        console.console.print()
         
-        # Collect IPs and domains
-        all_ips: set[str] = set()
-        all_domains: set[str] = set()
+        # Ask for direction: top (highest volume) or bottom (lowest volume)
+        console.console.print("  [1] Top N% (highest traffic volume - typical for investigation)")
+        console.console.print("  [2] Bottom N% (lowest traffic volume - look for hidden channels)")
+        console.console.print("  [s] Skip enrichment entirely")
+        direction_input = console.console.input("[bold]Select [1/2/s] (default: 1):[/bold] ").strip().lower()
         
-        for flow in parse_result.flows.values():
-            all_ips.add(flow.src_ip)
-            all_ips.add(flow.dst_ip)
+        if direction_input == "s":
+            console.print_info("Enrichment skipped by user")
+            filter_confirmed = True
+            enrichment_result = None
+            break
         
-        for query in parse_result.dns_queries:
-            if query.query_name:
-                all_domains.add(query.query_name)
+        use_top = direction_input != "2"
         
-        for tls in parse_result.tls_info:
-            if tls.sni:
-                all_domains.add(tls.sni)
+        # Ask for percentage
+        default_pct = 40
+        pct_input = console.console.input(f"[bold]Percentage to analyze (default: {default_pct}%):[/bold] ").strip()
+        try:
+            percent = int(pct_input) if pct_input else default_pct
+            percent = max(1, min(100, percent))  # Clamp to 1-100
+        except ValueError:
+            percent = default_pct
         
-        enrichment_summary = await enrichment_manager.enrich_indicators(
-            ips=all_ips,
-            domains=all_domains,
-            detector_findings=all_findings,
+        console.console.print()
+        direction_text = "top" if use_top else "bottom"
+        console.print_info(f"Filtering {direction_text} {percent}% of conversations by traffic volume...")
+        
+        # Run smart filter with user's settings
+        filtered_indicators: FilteredIndicators = smart_filter.filter_indicators(
+            flows=parse_result.flows,
+            dns_queries=parse_result.dns_queries,
+            tls_info=parse_result.tls_info,
+            top_percent=percent / 100.0,
+            use_top=use_top,
         )
         
-        console.print_success(f"Enrichment complete: {len(enrichment_summary.results)} indicators checked")
-        console.print_enrichment_results(enrichment_summary.to_dict())
-    else:
+        # Print filtering summary and ask for confirmation
+        console.console.print()
+        console.console.print("[bold bright_white]📊 Filtering Results:[/bold bright_white]")
+        console.print_info(f"Total conversations: {filtered_indicators.total_conversations}")
+        console.print_info(f"Analyzed ({direction_text} {percent}%): {filtered_indicators.top_conversations_analyzed} conversations")
+        console.console.print()
+        console.console.print(f"  [bold cyan]Public IPs to check:[/bold cyan] [bright_white]{len(filtered_indicators.public_ips)}[/bright_white]")
+        console.console.print(f"  [bold cyan]Domains to check:[/bold cyan] [bright_white]{len(filtered_indicators.domains)}[/bright_white]")
+        console.console.print(f"  [dim]Filtered by legitdomains.txt: {filtered_indicators.domains_filtered_by_legit}[/dim]")
+        
+        if filtered_indicators.typosquat_suspects:
+            console.print_warning(
+                f"Typosquatting detected: {', '.join(list(filtered_indicators.typosquat_suspects)[:5])}"
+            )
+        
+        # Confirm before proceeding
+        console.console.print()
+        proceed = console.console.input("[bold]Proceed with enrichment? [Y/n] (n = re-configure):[/bold] ").strip().lower()
+        
+        if proceed != "n":
+            filter_confirmed = True
+        else:
+            console.console.print()
+            console.print_info("Re-configuring filter settings...")
+            console.console.print()
+    
+    # Proceed with enrichment if confirmed and not skipped
+    skip_enrichment = (enrichment_result is not None) or not filter_confirmed
+    
+    if skip_enrichment:
+        pass  # Already handled skip case in loop
+    elif not cascading.is_configured:
         console.print_enrichment_skipped("No threat intel API keys configured")
+    elif filtered_indicators.total_indicators() == 0:
+        console.print_info("No indicators to check after smart filtering")
+    else:
+        console.print_cascading_enrichment_start(
+            len(filtered_indicators.public_ips),
+            len(filtered_indicators.domains)
+        )
+        
+        # Track current step for console output
+        current_step = {"step": None, "otx_flagged": 0, "abuse_flagged": 0, "vt_malicious": 0}
+        
+        def progress_callback(update: ProgressUpdate) -> None:
+            """Handle enrichment progress updates."""
+            # Print step header if step changed
+            if current_step["step"] != update.step:
+                current_step["step"] = update.step
+                
+                if update.step == "otx":
+                    console.print_enrichment_step_start(
+                        "1: AlienVault OTX",
+                        "Querying selected indicators for threat pulses",
+                        "10,000/hour"
+                    )
+                elif update.step == "abuseipdb":
+                    # Print OTX summary before moving on
+                    console.print_enrichment_step_complete(
+                        "OTX",
+                        len(filtered_indicators.public_ips) + len(filtered_indicators.domains),
+                        current_step["otx_flagged"]
+                    )
+                    console.print_enrichment_step_start(
+                        "2: AbuseIPDB",
+                        "Checking OTX-flagged IPs for abuse reports",
+                        "1,000/day"
+                    )
+                elif update.step == "virustotal":
+                    # Print AbuseIPDB summary
+                    console.print_enrichment_step_complete(
+                        "AbuseIPDB",
+                        update.total,
+                        current_step["abuse_flagged"]
+                    )
+                    console.print_enrichment_step_start(
+                        "3: VirusTotal",
+                        "Deep scanning flagged indicators (max 10)",
+                        "4/min"
+                    )
+            
+            # Print progress line
+            console.print_enrichment_progress(
+                step=update.step,
+                current=update.current,
+                total=update.total,
+                indicator=update.indicator,
+                is_flagged=update.is_flagged,
+                threat_level=update.threat_level,
+                details=update.details,
+            )
+            
+            # Track flagged counts
+            if update.is_flagged:
+                if update.step == "otx":
+                    current_step["otx_flagged"] += 1
+                elif update.step == "abuseipdb":
+                    current_step["abuse_flagged"] += 1
+                elif update.step == "virustotal" and update.threat_level == "malicious":
+                    current_step["vt_malicious"] += 1
+        
+        enrichment_result = await cascading.run(
+            ips=filtered_indicators.public_ips,
+            domains=filtered_indicators.domains,
+            typosquat_suspects=filtered_indicators.typosquat_suspects,
+            progress_callback=progress_callback,
+        )
+        
+        # Print final step summary
+        if current_step["step"] == "virustotal":
+            console.print_enrichment_step_complete(
+                "VirusTotal",
+                enrichment_result.stats.vt_checked,
+                enrichment_result.stats.vt_malicious
+            )
+        elif current_step["step"] == "abuseipdb":
+            console.print_enrichment_step_complete(
+                "AbuseIPDB",
+                enrichment_result.stats.abuseipdb_checked,
+                current_step["abuse_flagged"]
+            )
+        elif current_step["step"] == "otx":
+            console.print_enrichment_step_complete(
+                "OTX",
+                enrichment_result.stats.otx_checked,
+                current_step["otx_flagged"]
+            )
+        
+        # Print stats and flagged indicators
+        console.print_enrichment_stats(enrichment_result.stats.to_dict())
+        console.print_flagged_indicators(enrichment_result.flagged_indicators)
+        
+        console.print_success(f"Enrichment complete: {enrichment_result.stats.total_malicious} malicious, {enrichment_result.stats.total_suspicious} suspicious")
     
     # =========================================================================
     # Phase 5: AI Analysis
@@ -269,7 +426,7 @@ async def run_analysis(file_path: Path, console: NetSpecterConsole) -> dict:
     synthesis_result = None
     
     if llm_client.is_configured:
-        console.print_subphase("Running final synthesis with DeepSeek R1T2 Chimera...")
+        console.print_subphase("Running final synthesis with DeepSeek R1...")
         
         from backend.ai.synthesis import get_synthesis_orchestrator, SynthesisInput
         
@@ -277,12 +434,13 @@ async def run_analysis(file_path: Path, console: NetSpecterConsole) -> dict:
         
         enrichment_results_list = []
         enrichment_stats_dict = {}
-        if enrichment_summary:
-            enrichment_results_list = enrichment_summary.to_dict().get("results", [])
+        if enrichment_result:
+            enrichment_results_list = [r.to_dict() for r in enrichment_result.results]
             enrichment_stats_dict = {
-                "total_enriched": enrichment_summary.stats.total_indicators,
-                "malicious_found": enrichment_summary.stats.malicious_found,
-                "suspicious_found": enrichment_summary.stats.suspicious_found,
+                "total_enriched": enrichment_result.stats.total_indicators,
+                "malicious_found": enrichment_result.stats.total_malicious,
+                "suspicious_found": enrichment_result.stats.total_suspicious,
+                "flagged_indicators": enrichment_result.flagged_indicators,
             }
         
         top_talkers = [
@@ -337,8 +495,8 @@ async def run_analysis(file_path: Path, console: NetSpecterConsole) -> dict:
     findings_data = [f.to_dict() for f in all_findings]
     filter_generator.generate_from_findings(findings_data)
     
-    if enrichment_summary:
-        enrichment_results_for_filters = enrichment_summary.to_dict().get("results", [])
+    if enrichment_result:
+        enrichment_results_for_filters = [r.to_dict() for r in enrichment_result.results]
         filter_generator.generate_from_enrichment(enrichment_results_for_filters)
     
     # Add AI-recommended filters
@@ -367,8 +525,8 @@ async def run_analysis(file_path: Path, console: NetSpecterConsole) -> dict:
         "total_bytes": parse_result.total_bytes,
         "duration_seconds": parse_result.duration_seconds,
         "detections": len(all_findings),
-        "enriched_indicators": len(enrichment_summary.results) if enrichment_summary else 0,
-        "malicious_indicators": enrichment_summary.stats.malicious_found if enrichment_summary else 0,
+        "enriched_indicators": len(enrichment_result.results) if enrichment_result else 0,
+        "malicious_indicators": enrichment_result.stats.total_malicious if enrichment_result else 0,
         "threat_level": synthesis_result.get("threat_level", "unknown") if synthesis_result else "unknown",
         "wireshark_filters": wireshark_filters,
     }
@@ -379,7 +537,7 @@ async def run_analysis(file_path: Path, console: NetSpecterConsole) -> dict:
         "summary": summary,
         "statistics": stats.to_dict(),
         "detections": findings_data,
-        "enrichment": enrichment_summary.to_dict() if enrichment_summary else None,
+        "enrichment": enrichment_result.to_dict() if enrichment_result else None,
         "ai_insights": ai_insights,
         "synthesis": synthesis_result,
         "wireshark_filters": wireshark_filters,
@@ -480,13 +638,25 @@ Examples:
     try:
         results = asyncio.run(run_analysis(selected_file["path"], console))
         
-        # Save results if output file specified
+        # Save JSON results if output file specified
         if args.output:
             import json
             output_path = Path(args.output)
             with open(output_path, "w") as f:
                 json.dump(results, f, indent=2, default=str)
             console.print_success(f"Results saved to {output_path}")
+        
+        # Prompt to save markdown report
+        if console.prompt_save_report():
+            from backend.output.report import get_report_generator, save_report
+            
+            report_gen = get_report_generator()
+            report_content = report_gen.generate(
+                pcap_name=selected_file["name"],
+                results=results,
+            )
+            report_path = save_report(report_content, selected_file["path"])
+            console.print_report_saved(str(report_path))
         
         return 0
         
