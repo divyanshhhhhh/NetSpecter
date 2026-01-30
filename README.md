@@ -2,6 +2,8 @@
 
 **Network Packet Analysis Tool for Cybersecurity Investigation**
 
+*Author: Divyansh Pandya | License: MIT*
+
 NetSpecter is a professional-grade network packet analysis tool designed for cybersecurity investigation. It automates deep packet inspection by combining statistical analysis, behavioral pattern detection, threat intelligence enrichment, and AI-powered anomaly identification.
 
 ## Features
@@ -11,13 +13,13 @@ NetSpecter is a professional-grade network packet analysis tool designed for cyb
 - **AI-Powered Insights**: Use LLMs via OpenRouter to interpret findings and provide actionable intelligence
 - **Threat Intelligence Enrichment**: Correlate findings with VirusTotal, AbuseIPDB, and AlienVault OTX
 - **Wireshark Integration**: Generate ready-to-use Wireshark filters for manual investigation
+- **Interactive CLI**: Beautiful command-line interface with colored output and progress bars
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+ (for frontend)
 
 ### Installation
 
@@ -40,18 +42,6 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-4. Run the backend server:
-```bash
-uvicorn backend.main:app --reload
-```
-
-5. (Optional) Set up the frontend:
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
 ### API Keys
 
 | API | Purpose | Required | Free Tier |
@@ -63,50 +53,88 @@ npm run dev
 
 ## Usage
 
-### Web Interface
+### Command Line Interface
 
-1. Navigate to `http://localhost:8000` in your browser
-2. Upload a PCAP file or provide a filesystem path
-3. Monitor analysis progress in real-time
-4. Review findings and copy Wireshark filters
-
-### API
+Run NetSpecter with a directory containing PCAP files:
 
 ```bash
-# Upload and analyze a PCAP file
-curl -X POST "http://localhost:8000/api/analyze" \
-  -F "file=@capture.pcap"
+# Use default directory (~/SPR600/pcaps)
+netspecter
 
-# Analyze a PCAP file from filesystem path
-curl -X POST "http://localhost:8000/api/analyze/path" \
-  -H "Content-Type: application/json" \
-  -d '{"path": "/path/to/capture.pcap"}'
+# Specify a custom directory
+netspecter /path/to/pcaps
 
-# Get analysis results
-curl "http://localhost:8000/api/analysis/{analysis_id}"
+# Save results to JSON file
+netspecter /path/to/pcaps -o results.json
+```
+
+NetSpecter will:
+1. Display a banner with tool description
+2. Scan the directory for PCAP files
+3. Show a list of available files
+4. Prompt you to select a file to analyze
+5. Run the multi-phase analysis with detailed output
+
+### Analysis Phases
+
+| Phase | Description |
+|-------|-------------|
+| **Phase 1: Parsing** | Stream-process PCAP file, extract packets and flows |
+| **Phase 2: Statistics** | Compute protocol distribution, top talkers, timeline |
+| **Phase 3: Detection** | Run beacon, DNS tunnel, exfiltration, port scan detectors |
+| **Phase 4: Enrichment** | Query VirusTotal, AbuseIPDB, AlienVault OTX |
+| **Phase 5: AI Analysis** | LLM-powered statistical interpretation |
+| **Phase 6: Synthesis** | Final correlation and threat assessment |
+| **Phase 7: Filters** | Generate Wireshark display filters |
+
+### Example Output
+
+```
+ ███╗   ██╗███████╗████████╗███████╗██████╗ ███████╗ ██████╗████████╗███████╗██████╗ 
+ ████╗  ██║██╔════╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██╔════╝╚══██╔══╝██╔════╝██╔══██╗
+ ██╔██╗ ██║█████╗     ██║   ███████╗██████╔╝█████╗  ██║        ██║   █████╗  ██████╔╝
+ ██║╚██╗██║██╔══╝     ██║   ╚════██║██╔═══╝ ██╔══╝  ██║        ██║   ██╔══╝  ██╔══██╗
+ ██║ ╚████║███████╗   ██║   ███████║██║     ███████╗╚██████╗   ██║   ███████╗██║  ██║
+ ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚══════╝╚═╝     ╚══════╝ ╚═════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+
+📁 Scanning directory: /home/user/pcaps
+
+Found 3 PCAP files:
+┌───┬────────────────────────────┬───────────┬──────────────────────┐
+│ # │ Filename                   │ Size      │ Modified             │
+├───┼────────────────────────────┼───────────┼──────────────────────┤
+│ 1 │ suspicious_traffic.pcap    │ 156.2 MB  │ 2026-01-29 14:32     │
+│ 2 │ network_capture.pcapng     │ 45.8 MB   │ 2026-01-28 09:15     │
+│ 3 │ malware_sample.cap         │ 12.3 MB   │ 2026-01-27 16:45     │
+└───┴────────────────────────────┴───────────┴──────────────────────┘
+
+Select a file to analyze (1-3) or 'q' to quit: 1
 ```
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           React Frontend                                 │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐│
-│  │  Timeline   │ │  Network    │ │  Findings   │ │  Wireshark Filters  ││
-│  │  Charts     │ │  Topology   │ │  Table      │ │  Export             ││
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────────────┘│
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                         WebSocket (progress) + REST API
-                                    │
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         FastAPI Backend                                  │
+│                    NetSpecter CLI Application                           │
+│                                                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐│
 │  │                      Analysis Pipeline                               ││
 │  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────────────┐  ││
 │  │  │  PCAP    │ → │ Stats    │ → │Detection │ → │ Threat Intel     │  ││
 │  │  │  Parser  │   │ Engine   │   │ Engines  │   │ Enrichment       │  ││
 │  │  └──────────┘   └──────────┘   └──────────┘   └──────────────────┘  ││
+│  │       │              │              │                  │             ││
+│  │       └──────────────┼──────────────┼──────────────────┘             ││
+│  │                      ▼              ▼                                ││
+│  │               ┌─────────────────────────────┐                        ││
+│  │               │    OpenRouter LLM API       │                        ││
+│  │               │  (3-phase AI integration)   │                        ││
+│  │               └─────────────────────────────┘                        ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                    Rich Console Output                               ││
+│  │  • Progress bars  • Colored tables  • Phase indicators              ││
 │  └─────────────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -141,3 +169,5 @@ mypy backend/
 ## License
 
 MIT License - See LICENSE file for details.
+
+Copyright (c) 2026 Divyansh Pandya

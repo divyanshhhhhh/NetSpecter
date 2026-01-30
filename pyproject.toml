@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "NetSpecter Team"}
+    {name = "Divyansh Pandya"}
 ]
 keywords = ["network", "pcap", "security", "packet-analysis", "threat-detection"]
 
@@ -33,7 +33,13 @@ dependencies = [
     
     # Utilities
     "structlog>=24.1.0",
+    
+    # CLI Interface
+    "rich>=13.7.0",
 ]
+
+[project.scripts]
+netspecter = "backend.cli:main"
 
 [project.optional-dependencies]
 dev = [
